@@ -1,4 +1,5 @@
 library(dplyr)
+library(data.table)
 filename <- "Coursera_DS3_Final.zip"
 
 # getting the files installed and unziped
@@ -11,53 +12,46 @@ if (!file.exists("UCI HAR Dataset")) {
   unzip(filename) 
 }
 
+## test data:
+XTest<- read.table("UCI HAR Dataset/test/X_test.txt")
+YTest<- read.table("UCI HAR Dataset/test/Y_test.txt")
+SubjectTest <-read.table("UCI HAR Dataset/test/subject_test.txt")
 
-#assigning data frames for the data so that working with becomes easier
+## train data:
+XTrain<- read.table("UCI HAR Dataset/train/X_train.txt")
+YTrain<- read.table("UCI HAR Dataset/train/Y_train.txt")
+SubjectTrain <-read.table("UCI HAR Dataset/train/subject_train.txt")
 
-features <- read.csv('./UCI HAR Dataset/features.txt', header = FALSE, sep = ' ')
-features <- as.character(features[,2])
+## features and activity
+features<-read.table("UCI HAR Dataset/features.txt")
+activity<-read.table("UCI HAR Dataset/activity_labels.txt")
 
-data.train.x <- read.table('./UCI HAR Dataset/train/X_train.txt')
-data.train.activity <- read.csv('./UCI HAR Dataset/train/y_train.txt', header = FALSE, sep = ' ')
-data.train.subject <- read.csv('./UCI HAR Dataset/train/subject_train.txt',header = FALSE, sep = ' ')
+##Part1 - merges train and test data in one dataset (full dataset at the end)
+X<-rbind(XTest, XTrain)
+Y<-rbind(YTest, YTrain)
+Subject<-rbind(SubjectTest, SubjectTrain)
 
-data.train <-  data.frame(data.train.subject, data.train.activity, data.train.x)
-names(data.train) <- c(c('subject', 'activity'), features)
+index<-grep("mean\\(\\)|std\\(\\)", features[,2]) ##getting features indeces which contain mean() and std() in their name
+length(index) ## count of features
+X<-X[,index] ## getting only variables with mean/stdev
+dim(X) ## checking dim of subset 
 
-data.test.x <- read.table('./UCI HAR Dataset/test/X_test.txt')
-data.test.activity <- read.csv('./UCI HAR Dataset/test/y_test.txt', header = FALSE, sep = ' ')
-data.test.subject <- read.csv('./UCI HAR Dataset/test/subject_test.txt', header = FALSE, sep = ' ')
+Y[,1]<-activity[Y[,1],2] ## replacing numeric values with lookup value from activity.txt; won't reorder Y set
+head(Y) #to check if they got replaced
 
-data.test <-  data.frame(data.test.subject, data.test.activity, data.test.x)
-names(data.test) <- c(c('subject', 'activity'), features)
-#combining test data with the other data
+names<-features[index,2] ## getting names for variables
 
-data.all <- rbind(data.train, data.test)
+names(X)<-names ## updating colNames for new dataset
+names(Subject)<-"SubjectID"
+names(Y)<-"Activity"
 
-#pipeline to get the mean and SD
-mean_std.select <- grep('mean|std', features)
-data.sub <- data.all[,c(1,2,mean_std.select + 2)]
+CleanedData<-cbind(Subject, Y, X)
+head(CleanedData[,c(1:4)]) ## first 5 columns
 
-#change the activity names to actually discribe what they mean 
-activity.labels <- read.table('./UCI HAR Dataset/activity_labels.txt', header = FALSE)
-activity.labels <- as.character(activity.labels[,2])
-data.sub$activity <- activity.labels[data.sub$activity]
 
-#Replace the names in data set with names from activity labels
-
-name.new <- names(data.sub)
-name.new <- gsub("[(][)]", "", name.new)
-name.new <- gsub("^t", "TimeDomain_", name.new)
-name.new <- gsub("^f", "FrequencyDomain_", name.new)
-name.new <- gsub("Acc", "Accelerometer", name.new)
-name.new <- gsub("Gyro", "Gyroscope", name.new)
-name.new <- gsub("Mag", "Magnitude", name.new)
-name.new <- gsub("-mean-", "_Mean_", name.new)
-name.new <- gsub("-std-", "_StandardDeviation_", name.new)
-name.new <- gsub("-", "_", name.new)
-names(data.sub) <- name.new
-
-#write .txt file
-
-data.tidy <- aggregate(data.sub[,3:81], by = list(activity = data.sub$activity, subject = data.sub$subject),FUN = mean)
-write.table(x = data.tidy, file = "data_tidy.txt", row.names = FALSE)
+###################writeing the file
+CleanedData<-data.table(CleanedData)
+TidyData <- CleanedData[, lapply(.SD, mean), by = 'SubjectID,Activity'] ## features average by Subject and by activity
+dim(TidyData)
+write.table(TidyData, file = "data_tidy.txt", row.names = FALSE)
+head(TidyData[order(SubjectID)][,c(1:4), with = FALSE],12) 
